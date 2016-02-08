@@ -1,3 +1,77 @@
+Use for LKL
+~~~~~~~~~~~
+Since LKL can grab shared resources during LD_PRELOAD (e.g. a TAP
+device), it can have a problem with Vaglrind: the host kernel runs the
+code in LD_PRELOAD for the Valgrind process, then Valgrind re-runs
+LD_PRELOAD for the process it is instrumenting. Now the "inner" LKL
+will fail with an error that its TAP device is used and quit
+immediately, while the "outer" LKL uselessly holds on to it.
+
+We can fix this by adding two new environment variables,
+LKL_LIBRARY_PATH and LKL_PRELOAD, that Valgrind waits to put into
+LD_LIBRARY_PATH and LD_PRELOAD until right before it starts executing
+the instrumented process. For example:
+
+Desired behavior:
+
+    $ sudo LKL_HIJACK_NET_TAP=eth0 LD_LIBRARY_PATH=lib LD_PRELOAD=liblkl-hijack.so ip link         
+    1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default 
+        link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UNKNOWN mode DEFAULT group default qlen 1000
+        link/ether 76:fb:8f:22:3d:77 brd ff:ff:ff:ff:ff:ff
+    3: sit0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN mode DEFAULT group default 
+
+
+Incorrect behavior under normal Valgrind: 
+
+    $ sudo LKL_HIJACK_NET_TAP=eth0 LD_LIBRARY_PATH=lib LD_PRELOAD=liblkl-hijack.so valgrind ip link
+    failed to attach to eth0: Device or resource busy
+    ==40345== Memcheck, a memory error detector
+    ==40345== Copyright (C) 2002-2013, and GNU GPL'd, by Julian Seward et al.
+    ==40345== Using Valgrind-3.10.1 and LibVEX; rerun with -h for copyright info
+    ==40345== Command: ip link
+    ==40345== 
+    failed to attach to eth0: Device or resource busy
+
+Correct behavior under patched Vaglrind:
+
+    $ sudo LKL_HIJACK_NET_TAP=eth0 LKL_LIBRARY_PATH=lib LKL_PRELOAD=liblkl-hijack.so taskset -c 10 /tmp/valgrind-build2/bin/valgrind ip link
+    ==68392== Memcheck, a memory error detector
+    ==68392== Copyright (C) 2002-2015, and GNU GPL'd, by Julian Seward et al.
+    ==68392== Using Valgrind-3.12.0.SVN and LibVEX; rerun with -h for copyright info
+    ==68392== Command: ip link
+    ==68392== 
+    1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default 
+        link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UNKNOWN mode DEFAULT group default qlen 1000
+        link/ether 86:c8:d0:f8:b6:31 brd ff:ff:ff:ff:ff:ff
+    3: sit0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN mode DEFAULT group default 
+        link/sit 0.0.0.0 brd 0.0.0.0
+    ==68392== 
+    ==68392== HEAP SUMMARY:
+    ==68392==     in use at exit: 11,616 bytes in 52 blocks
+    ==68392==   total heap usage: 440 allocs, 388 frees, 67,147,414 bytes allocated
+    ==68392== 
+    ...
+
+
+Build changes for GitHub clone
+~~~~~~~~~~~~~~~~~~~~~~~~
+Valgrind's svn pulls down an external repo into a directory named VEX
+that's needed to build it. You can meet that requirement by running
+the following in the root of this project:
+
+    git clone https://github.com/svn2github/valgrind-vex.git VEX
+
+before continuing with:
+
+    ./autogen.sh
+    ./configure --prefix=where/to/install
+    make -j
+    make install
+
+as normal.
+
 
 Release notes for Valgrind
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

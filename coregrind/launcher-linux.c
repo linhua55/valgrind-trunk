@@ -324,6 +324,15 @@ int main(int argc, char** argv, char** envp)
    char* new_line;
    char** new_env;
 
+   #define MAX_ENV_VAL_LEN 1024
+   char ld_preload_base[MAX_ENV_VAL_LEN] = "LD_PRELOAD=";
+   char ld_library_path_base[MAX_ENV_VAL_LEN] = "LD_LIBRARY_PATH=";
+   char lkl_preload_key[] = "LKL_PRELOAD";
+   char lkl_library_path_key[] = "LKL_LIBRARY_PATH";
+   char *lkl_preload = NULL;
+   char *lkl_library_path = NULL;
+
+
    /* Start the debugging-log system ASAP.  First find out how many 
       "-d"s were specified.  This is a pre-scan of the command line.
       At the same time, look for the tool name. */
@@ -453,14 +462,25 @@ int main(int argc, char** argv, char** envp)
 
    for (j = 0; envp[j]; j++)
       ;
-   new_env = malloc((j+2) * sizeof(char*));
+   new_env = malloc((j+4) * sizeof(char*));
    if (new_env == NULL)
       barf("malloc of new_env failed.");
    for (i = 0; i < j; i++)
       new_env[i] = envp[i];
    new_env[i++] = new_line;
+
+
+   /* Support LKL's use of LD_PRELOAD */
+   if ((lkl_preload = getenv(lkl_preload_key))) {
+      new_env[i++] = strcat(ld_preload_base, lkl_preload);
+   }
+
+   if ((lkl_library_path = getenv(lkl_library_path_key))) {
+      new_env[i++] = strcat(ld_library_path_base, lkl_library_path);
+   }
+
    new_env[i++] = NULL;
-   assert(i == j+2);
+
 
    /* Establish the correct VALGRIND_LIB. */
    cp = getenv(VALGRIND_LIB);
